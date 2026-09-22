@@ -3,8 +3,15 @@
 A neural machine translation system built with a PyTorch Transformer
 encoder-decoder, following the "Attention Is All You Need" architecture.
 Includes data loading, training, and greedy-decoding inference, plus a
-small bundled English→Spanish toy corpus so you can train and translate
+small bundled English→Turkish toy corpus so you can train and translate
 end-to-end out of the box.
+
+The toy corpus encodes real Turkish grammar rather than word-for-word
+substitution: subject-object-verb order, vowel-harmony verb conjugation
+(present continuous, `-Iyor`), and accusative case marking on definite
+direct objects (e.g. "the apple" → `elmayı`) while indefinite objects
+stay unmarked (e.g. "a book" → `kitap`). See
+`scripts/generate_toy_data.py` for the rules.
 
 ## Architecture
 
@@ -32,7 +39,7 @@ translator/
 scripts/
   generate_toy_data.py  # regenerates the bundled toy corpus
 data/
-  train.tsv, val.tsv, test.tsv  # toy English->Spanish corpus
+  train.tsv, val.tsv, test.tsv  # toy English->Turkish corpus
 tests/
   test_model.py  # shape/mask sanity tests
 ```
@@ -73,6 +80,7 @@ Run `python -m translator.train --help` for the full list.
 ```bash
 python -m translator.translate --checkpoint checkpoints/model.pt \
     --text "I want the apple ."
+# -> ben elmayı istiyorum .
 ```
 
 Omit `--text` to enter an interactive prompt loop.
@@ -83,10 +91,13 @@ The toy corpus exists purely to exercise the pipeline end-to-end; it won't
 produce a general-purpose translator. To train on real data, replace
 `data/train.tsv` / `data/val.tsv` / `data/test.tsv` with your own files in
 the same format — one `source<TAB>target` sentence pair per line (e.g. from
-Multi30k, WMT, or Tatoeba) — and re-run training. For larger corpora you'll
-likely want to increase `--d-model`, `--encoder-layers`/`--decoder-layers`,
-train for more epochs, and consider subword tokenization (e.g. BPE) in
-place of the whitespace tokenizer in `translator/vocab.py`.
+the Tatoeba or OPUS English-Turkish corpora) — and re-run training. For
+larger corpora you'll likely want to increase `--d-model`,
+`--encoder-layers`/`--decoder-layers`, train for more epochs, and consider
+subword tokenization (e.g. BPE) in place of the whitespace tokenizer in
+`translator/vocab.py` — Turkish's agglutinative morphology in particular
+benefits from subword units, since a single toy vocabulary entry like
+`elmayı` can't generalize to `elmalar`, `elmam`, `elmasız`, etc.
 
 ## Tests
 

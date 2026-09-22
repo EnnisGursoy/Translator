@@ -1,10 +1,16 @@
-"""Generate a small, grammatically-consistent English->Spanish parallel
+"""Generate a small, grammatically-consistent English->Turkish parallel
 corpus for demonstrating and smoke-testing the translation model.
 
 This is a *toy* dataset meant for quickly exercising the training
 pipeline end-to-end on a laptop/CPU. For real translation quality,
-point train.py at a real parallel corpus (e.g. Multi30k, WMT, Tatoeba)
-in the same TSV format: one "source<TAB>target" pair per line.
+point train.py at a real parallel corpus (e.g. Tatoeba, OPUS, WMT) in
+the same TSV format: one "source<TAB>target" pair per line.
+
+Turkish is subject-object-verb (SOV), agglutinative, and marks definite
+direct objects with the accusative case (vowel-harmony suffix), while
+indefinite objects stay unmarked. The tables below hand-encode those
+rules for a handful of subjects/verbs/objects rather than implementing
+a general Turkish morphological analyzer.
 """
 import csv
 import random
@@ -12,58 +18,66 @@ from pathlib import Path
 
 random.seed(42)
 
-# subject, subject_es
+# English subject, Turkish subject, conjugation index (Turkish has no
+# grammatical gender, so English "he" and "she" both map to "o" and
+# share a conjugation slot).
 SUBJECTS = [
-    ("I", "yo"),
-    ("you", "tú"),
-    ("he", "él"),
-    ("she", "ella"),
-    ("we", "nosotros"),
-    ("they", "ellos"),
+    ("I", "ben", 0),
+    ("you", "sen", 1),
+    ("he", "o", 2),
+    ("she", "o", 2),
+    ("we", "biz", 3),
+    ("they", "onlar", 4),
 ]
 
-# infinitive -> (English conjugation per subject, Spanish conjugation per subject)
-# subject order: I, you, he, she, we, they
+# infinitive -> (English conjugation per subject,
+#                Turkish present-continuous (-Iyor) conjugation
+#                per conjugation index: ben, sen, o, biz, onlar)
 VERBS = {
     "eat": (["eat", "eat", "eats", "eats", "eat", "eat"],
-            ["como", "comes", "come", "come", "comemos", "comen"]),
+            ["yiyorum", "yiyorsun", "yiyor", "yiyoruz", "yiyorlar"]),
     "see": (["see", "see", "sees", "sees", "see", "see"],
-            ["veo", "ves", "ve", "ve", "vemos", "ven"]),
+            ["görüyorum", "görüyorsun", "görüyor", "görüyoruz", "görüyorlar"]),
     "love": (["love", "love", "loves", "loves", "love", "love"],
-             ["amo", "amas", "ama", "ama", "amamos", "aman"]),
+             ["seviyorum", "seviyorsun", "seviyor", "seviyoruz", "seviyorlar"]),
     "read": (["read", "read", "reads", "reads", "read", "read"],
-              ["leo", "lees", "lee", "lee", "leemos", "leen"]),
+             ["okuyorum", "okuyorsun", "okuyor", "okuyoruz", "okuyorlar"]),
     "want": (["want", "want", "wants", "wants", "want", "want"],
-              ["quiero", "quieres", "quiere", "quiere", "queremos", "quieren"]),
+             ["istiyorum", "istiyorsun", "istiyor", "istiyoruz", "istiyorlar"]),
     "buy": (["buy", "buy", "buys", "buys", "buy", "buy"],
-             ["compro", "compras", "compra", "compra", "compramos", "compran"]),
-    "need": (["need", "need", "needs", "needs", "need", "need"],
-              ["necesito", "necesitas", "necesita", "necesita", "necesitamos", "necesitan"]),
+            ["alıyorum", "alıyorsun", "alıyor", "alıyoruz", "alıyorlar"]),
+    "drink": (["drink", "drink", "drinks", "drinks", "drink", "drink"],
+              ["içiyorum", "içiyorsun", "içiyor", "içiyoruz", "içiyorlar"]),
     "find": (["find", "find", "finds", "finds", "find", "find"],
-              ["encuentro", "encuentras", "encuentra", "encuentra", "encontramos", "encuentran"]),
+             ["buluyorum", "buluyorsun", "buluyor", "buluyoruz", "buluyorlar"]),
 }
 
+# English object -> Turkish object, already case-marked: definite objects
+# ("the X") take the accusative suffix, indefinite ones ("a X" / mass
+# nouns) stay in the bare nominative, per Turkish grammar.
 OBJECTS = [
-    ("the apple", "la manzana"),
-    ("a book", "un libro"),
-    ("the dog", "el perro"),
-    ("water", "agua"),
-    ("bread", "pan"),
-    ("the house", "la casa"),
-    ("the car", "el coche"),
-    ("a friend", "un amigo"),
+    ("the apple", "elmayı"),
+    ("a book", "kitap"),
+    ("the dog", "köpeği"),
+    ("water", "su"),
+    ("bread", "ekmek"),
+    ("the house", "evi"),
+    ("the car", "arabayı"),
+    ("a friend", "bir arkadaşı"),
 ]
 
 
 def build_pairs():
     pairs = []
-    for verb_en, (en_conjugations, es_conjugations) in VERBS.items():
-        for subj_idx, (subj_en, subj_es) in enumerate(SUBJECTS):
+    for verb_en, (en_conjugations, tr_conjugations) in VERBS.items():
+        for subj_idx, (subj_en, subj_tr, conj_idx) in enumerate(SUBJECTS):
             verb_en_conj = en_conjugations[subj_idx]
-            verb_es = es_conjugations[subj_idx]
-            for obj_en, obj_es in OBJECTS:
+            verb_tr = tr_conjugations[conj_idx]
+            for obj_en, obj_tr in OBJECTS:
+                # English: Subject-Verb-Object.
                 src = f"{subj_en} {verb_en_conj} {obj_en} .".strip()
-                tgt = f"{subj_es} {verb_es} {obj_es} .".strip()
+                # Turkish: Subject-Object-Verb.
+                tgt = f"{subj_tr} {obj_tr} {verb_tr} .".strip()
                 # Capitalize first letter for readability.
                 src = src[0].upper() + src[1:]
                 tgt = tgt[0].upper() + tgt[1:]
