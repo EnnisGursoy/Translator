@@ -10,14 +10,22 @@ import argparse
 
 import torch
 
+from .bpe import BPETokenizer
 from .model import TransformerSeq2Seq, generate_square_subsequent_mask
-from .vocab import BOS_IDX, EOS_IDX, PAD_IDX, Vocab, tokenize
+from .vocab import BOS_IDX, EOS_IDX, PAD_IDX, Vocab
+
+
+def _load_tokenizer(tok_type: str, state) -> Vocab | BPETokenizer:
+    if tok_type == "bpe":
+        return BPETokenizer.from_str(state)
+    return Vocab(state)
 
 
 def load_model(checkpoint_path: str, device: torch.device):
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-    src_vocab = Vocab(checkpoint["src_vocab"])
-    tgt_vocab = Vocab(checkpoint["tgt_vocab"])
+    tok_type = checkpoint["tokenizer_type"]
+    src_vocab = _load_tokenizer(tok_type, checkpoint["src_tokenizer"])
+    tgt_vocab = _load_tokenizer(tok_type, checkpoint["tgt_tokenizer"])
     config = checkpoint["config"]
 
     model = TransformerSeq2Seq(
@@ -34,12 +42,12 @@ def load_model(checkpoint_path: str, device: torch.device):
 def greedy_translate(
     model: TransformerSeq2Seq,
     sentence: str,
-    src_vocab: Vocab,
-    tgt_vocab: Vocab,
+    src_vocab: Vocab | BPETokenizer,
+    tgt_vocab: Vocab | BPETokenizer,
     device: torch.device,
     max_len: int = 50,
 ) -> str:
-    src_ids = [BOS_IDX, *src_vocab.encode(tokenize(sentence)), EOS_IDX]
+    src_ids = [BOS_IDX, *src_vocab.encode(sentence), EOS_IDX]
     src = torch.tensor([src_ids], dtype=torch.long, device=device)
     src_padding_mask = src == PAD_IDX
 

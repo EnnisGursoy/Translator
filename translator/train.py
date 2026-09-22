@@ -15,17 +15,34 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from .dataset import ParallelDataset, collate_batch
+from .bpe import BPETokenizer
+from .dataset import ParallelDataset, Tokenizer, collate_batch
 from .model import TransformerSeq2Seq, create_masks
 from .vocab import PAD_IDX, Vocab
 
 
-def build_vocabs(train_tsv: str) -> tuple[Vocab, Vocab]:
+def build_tokenizers(
+    train_tsv: str, kind: str, bpe_vocab_size: int
+) -> tuple[Tokenizer, Tokenizer]:
     src_sentences = ParallelDataset.read_sentences(train_tsv, column=0)
     tgt_sentences = ParallelDataset.read_sentences(train_tsv, column=1)
-    src_vocab = Vocab.build(src_sentences)
-    tgt_vocab = Vocab.build(tgt_sentences)
-    return src_vocab, tgt_vocab
+
+    if kind == "word":
+        return Vocab.build(src_sentences), Vocab.build(tgt_sentences)
+
+    if kind == "bpe":
+        src_tok = BPETokenizer.train(src_sentences, vocab_size=bpe_vocab_size)
+        tgt_tok = BPETokenizer.train(tgt_sentences, vocab_size=bpe_vocab_size)
+        return src_tok, tgt_tok
+
+    raise ValueError(f"Unknown tokenizer kind: {kind!r}")
+
+
+def tokenizer_to_checkpoint(tokenizer: Tokenizer) -> tuple[str, object]:
+    """Returns (tokenizer_type, serialized_state) for saving in a checkpoint."""
+    if isinstance(tokenizer, BPETokenizer):
+        return "bpe", tokenizer.to_str()
+    return "word", tokenizer.token_to_idx
 
 
 def run_epoch(
@@ -78,6 +95,20 @@ def main():
     parser.add_argument("--decoder-layers", type=int, default=3)
     parser.add_argument("--dim-feedforward", type=int, default=512)
     parser.add_argument("--dropout", type=float, default=0.1)
+    parser.add_argument(
+        "--tokenizer",
+        choices=["word", "bpe"],
+        default="word",
+        help="'word': whitespace vocab (vocab.py). 'bpe': byte-level BPE "
+        "subwords (bpe.py), recommended for morphologically rich "
+        "languages like Turkish or for larger/real corpora.",
+    )
+    parser.add_argument(
+        "--bpe-vocab-size",
+        type=int,
+        default=1000,
+        help="Target vocab size per language when --tokenizer bpe.",
+    )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
@@ -85,7 +116,7 @@ def main():
     torch.manual_seed(args.seed)
     device = torch.device(args.device)
 
-    src_vocab, tgt_vocab = build_vocabs(args.train)
+    src_vocab, tgt_vocab = build_tokenizers(args.train, args.tokenizer, args.bpe_vocab_size)
     print(f"Source vocab size: {len(src_vocab)} | Target vocab size: {len(tgt_vocab)}")
 
     train_ds = ParallelDataset(args.train, src_vocab, tgt_vocab)
@@ -132,11 +163,14 @@ def main():
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            src_tok_type, src_tok_state = tokenizer_to_checkpoint(src_vocab)
+            tgt_tok_type, tgt_tok_state = tokenizer_to_checkpoint(tgt_vocab)
             torch.save(
                 {
                     "model_state_dict": model.state_dict(),
-                    "src_vocab": src_vocab.token_to_idx,
-                    "tgt_vocab": tgt_vocab.token_to_idx,
+                    "tokenizer_type": src_tok_type,  # same for both, by construction
+                    "src_tokenizer": src_tok_state,
+                    "tgt_tokenizer": tgt_tok_state,
                     "config": {
                         "d_model": args.d_model,
                         "nhead": args.nhead,

@@ -34,8 +34,10 @@ class Vocab:
     def __len__(self) -> int:
         return len(self.token_to_idx)
 
-    def encode(self, tokens: Iterable[str]) -> list[int]:
-        return [self.token_to_idx.get(t, UNK_IDX) for t in tokens]
+    def encode(self, text: str) -> list[int]:
+        """Encodes raw text into ids (no BOS/EOS). Same signature as
+        BPETokenizer.encode, so the two are interchangeable in dataset.py."""
+        return [self.token_to_idx.get(t, UNK_IDX) for t in tokenize(text)]
 
     def decode(self, indices: Iterable[int]) -> list[str]:
         out = []
